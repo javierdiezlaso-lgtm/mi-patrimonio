@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1220"><link rel="manifest" href="manifest.json">
+<title>Mi Patrimonio v2</title>
+<style>
+:root{--bg:#f3f5f8;--card:#fff;--ink:#172033;--muted:#6b7484;--line:#e1e6ed;--accent:#1769e0;--good:#087f5b;--bad:#c92a2a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{background:#0b1220;color:#fff;padding:20px 16px;position:sticky;top:0;z-index:4}header h1{margin:0;font-size:22px}header small{opacity:.7}
+main{max-width:980px;margin:auto;padding:14px}.hero{background:linear-gradient(135deg,#0b1220,#214474);color:#fff;border-radius:18px;padding:20px;margin-bottom:14px}
+.label{font-size:12px;opacity:.72}.total{font-size:34px;font-weight:800}.hero .muted{color:#d6e0ee}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.btn{border:0;border-radius:10px;padding:10px 13px;font-weight:700;cursor:pointer}.primary{background:var(--accent);color:#fff}.secondary{background:#e9eef7;color:#16345e}.danger{background:#ffeded;color:#a32323}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px;margin-bottom:12px;box-shadow:0 2px 8px #1720330a}
+.metric{font-size:22px;font-weight:800}.muted{font-size:12px;color:var(--muted)}.section{display:flex;justify-content:space-between;align-items:center;margin:18px 2px 9px}.section h2{font-size:18px;margin:0}
+.row{display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding:12px 0}.row:first-child{border-top:0}.name{font-weight:750}.sub{font-size:12px;color:var(--muted);margin-top:2px}.right{text-align:right;font-weight:750}
+.good{color:var(--good)}.bad{color:var(--bad)}.tag{display:inline-block;padding:3px 7px;border-radius:20px;background:#eef2f7;font-size:11px;margin-top:4px}
+form{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}label{font-size:12px;color:var(--muted)}input,select{width:100%;padding:10px;border:1px solid #ccd4df;border-radius:9px;font-size:15px;margin-top:4px}.full{grid-column:1/-1}
+canvas{width:100%;height:240px;display:block}.chartWrap{height:250px}
+.tabs{display:flex;gap:7px;overflow:auto;margin-bottom:12px}.tab{white-space:nowrap}.hidden{display:none}
+@media(max-width:520px){form{grid-template-columns:1fr}.full{grid-column:auto}.total{font-size:29px}}
+</style>
+</head>
+<body>
+<header><h1>Mi Patrimonio</h1><small>Versión 2 · inversiones y patrimonio</small></header>
+<main>
+<section class="hero">
+<div class="label">PATRIMONIO TOTAL</div><div class="total" id="grand">0,00 €</div>
+<div class="muted" id="updated">Sin actualización</div>
+<div class="actions"><button class="btn primary" onclick="refresh()">↻ Actualizar</button><button class="btn secondary" onclick="snapshot(true)">Guardar valoración de hoy</button><button class="btn secondary" onclick="exportData()">Copia de seguridad</button></div>
+</section>
+
+<div class="grid">
+<div class="card"><div class="muted">ACCIONES</div><div class="metric" id="stocksTotal">0 €</div></div>
+<div class="card"><div class="muted">DEPÓSITOS</div><div class="metric" id="depositsTotal">0 €</div></div>
+<div class="card"><div class="muted">CUENTAS</div><div class="metric" id="accountsTotal">0 €</div></div>
+<div class="card"><div class="muted">PATRIMONIO HACE 30 DÍAS</div><div class="metric" id="monthAgo">—</div></div>
+</div>
+
+<div class="section"><h2>Evolución del patrimonio</h2><select id="range" onchange="drawChart()"><option value="30">30 días</option><option value="90">90 días</option><option value="365">1 año</option></select></div>
+<section class="card chartWrap"><canvas id="chart"></canvas></section>
+
+<div class="section"><h2>Distribución</h2></div>
+<section class="card" id="distribution"></section>
+
+<div class="section"><h2>Acciones</h2><button class="btn secondary" onclick="show('stock')">+ Añadir</button></div>
+<section class="card" id="stocks"></section>
+
+<div class="section"><h2>Depósitos</h2><button class="btn secondary" onclick="show('deposit')">+ Añadir</button></div>
+<section class="card" id="deposits"></section>
+
+<div class="section"><h2>Cuentas corrientes</h2><button class="btn secondary" onclick="show('account')">+ Añadir</button></div>
+<section class="card" id="accounts"></section>
+
+<section class="card hidden" id="forms">
+<div class="tabs"><button class="btn secondary tab" onclick="show('stock')">Acción</button><button class="btn secondary tab" onclick="show('deposit')">Depósito</button><button class="btn secondary tab" onclick="show('account')">Cuenta</button></div>
+
+<div id="stockPane">
+<h2>Acción</h2><form id="stockForm"><input id="stockId" type="hidden">
+<div><label>Nombre<input id="stockName" required></label></div><div><label>Ticker<input id="stockSymbol" required placeholder="AAPL / SAN:MAD"></label></div>
+<div><label>Títulos<input id="stockQty" type="number" step="0.0001" required></label></div><div><label>Coste total de compra<input id="stockCost" type="number" step="0.01" placeholder="Ej. 2500"></label></div>
+<div><label>Moneda<select id="stockCurrency"><option>EUR</option><option>USD</option><option>GBP</option></select></label></div>
+<div><label>Comisión total<input id="stockFees" type="number" step="0.01" value="0"></label></div>
+<div class="full"><button class="btn primary">Guardar</button> <button type="button" class="btn secondary" onclick="hide()">Cancelar</button></div></form></div>
+
+<div id="depositPane" class="hidden"><h2>Depósito</h2><form id="depositForm"><input id="depositId" type="hidden">
+<div><label>Nombre<input id="depositName" required></label></div><div><label>Capital<input id="depositAmount" type="number" step="0.01" required></label></div>
+<div><label>Moneda<select id="depositCurrency"><option>EUR</option><option>USD</option><option>GBP</option></select></label></div><div><label>Interés anual %<input id="depositRate" type="number" step="0.01"></label></div>
+<div class="full"><button class="btn primary">Guardar</button> <button type="button" class="btn secondary" onclick="hide()">Cancelar</button></div></form></div>
+
+<div id="accountPane" class="hidden"><h2>Cuenta corriente</h2><form id="accountForm"><input id="accountId" type="hidden">
+<div><label>Nombre<input id="accountName" required></label></div><div><label>Saldo<input id="accountAmount" type="number" step="0.01" required></label></div>
+<div><label>Moneda<select id="accountCurrency"><option>EUR</option><option>USD</option><option>GBP</option></select></label></div>
+<div class="full"><button class="btn primary">Guardar</button> <button type="button" class="btn secondary" onclick="hide()">Cancelar</button></div></form></div>
+</section>
+
+<details class="card"><summary><b>Configuración</b></summary><div style="height:10px"></div>
+<form id="settings"><div class="full"><label>API key Twelve Data<input id="apiKey" type="password"></label></div>
+<div><label>Moneda principal<select id="baseCurrency"><option>EUR</option><option>USD</option><option>GBP</option></select></label></div>
+<div><label>Actualización al abrir<select id="auto"><option value="yes">Sí</option><option value="no">No</option></select></label></div>
+<div class="full"><button class="btn primary">Guardar configuración</button></div></form>
+<p class="muted">La API de Twelve Data permite precios actuales, cierres EOD e históricos. El plan Basic actual indica 800 créditos API/día. citeturn0search0</p>
+</details>
+<footer class="muted">Uso personal. No es asesoramiento financiero.</footer>
+</main>
+
+<script>
+const STORE='miPatrimonio_v2';
+let db=JSON.parse(localStorage.getItem(STORE)||'{"stocks":[],"deposits":[],"accounts":[],"history":[],"settings":{"apiKey":"","baseCurrency":"EUR","auto":"yes"}}');
+const $=id=>document.getElementById(id), save=()=>{localStorage.setItem(STORE,JSON.stringify(db));render();drawChart()};
+const money=(n,c='EUR')=>new Intl.NumberFormat('es-ES',{style:'currency',currency:c}).format(Number(n)||0);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function total(){return db.stocks.reduce((a,x)=>a+(x.base||0),0)+db.deposits.reduce((a,x)=>a+(x.base??x.amount),0)+db.accounts.reduce((a,x)=>a+(x.base??x.amount),0)}
+function show(type){$('forms').classList.remove('hidden');['stock','deposit','account'].forEach(x=>$(x+'Pane').classList.toggle('hidden',x!==type));$('forms').scrollIntoView({behavior:'smooth'})}
+function hide(){$('forms').classList.add('hidden')}
+function del(t,id){if(confirm('¿Eliminar?')){db[t]=db[t].filter(x=>x.id!==id);save()}}
+function render(){
+ $('apiKey').value=db.settings.apiKey||'';$('baseCurrency').value=db.settings.baseCurrency||'EUR';$('auto').value=db.settings.auto||'yes';
+ let st=db.stocks.reduce((a,x)=>a+(x.base||0),0),de=db.deposits.reduce((a,x)=>a+(x.base??x.amount),0),ac=db.accounts.reduce((a,x)=>a+(x.base??x.amount),0);
+ $('stocksTotal').textContent=money(st);$('depositsTotal').textContent=money(de);$('accountsTotal').textContent=money(ac);$('grand').textContent=money(st+de+ac);
+ $('updated').textContent=db.lastUpdate?'Última actualización: '+new Date(db.lastUpdate).toLocaleString('es-ES'):'Sin actualización';
+ let h=db.history.filter(x=>Date.now()-new Date(x.date).getTime()<=30*864e5);$('monthAgo').textContent=h.length?money(h[0].total):'—';
+ $('stocks').innerHTML=db.stocks.length?db.stocks.map(x=>{let invested=(x.cost||0)+(x.fees||0),gain=(x.base||0)-invested*(x.fxCost||1);let pct=invested?((x.base||0)/(invested*(x.fxCost||1))-1)*100:0;return `<div class=row><div><div class=name>${esc(x.name)}</div><div class=sub>${esc(x.symbol)} · ${x.qty} títulos</div><div class=sub>Cotización: ${x.price!=null?money(x.price,x.currency):'—'} · Valor: ${money(x.base||0)}</div></div><div class=right><span class=${gain>=0?'good':'bad'}>${gain>=0?'+':''}${money(gain)}</span><br><span class=sub>${pct>=0?'+':''}${pct.toFixed(2)}%</span><br><button class="btn secondary" onclick="editStock('${x.id}')">Editar</button> <button class="btn danger" onclick="del('stocks','${x.id}')">×</button></div></div>`}).join(''):'<div class=muted>No hay acciones.</div>';
+ $('deposits').innerHTML=db.deposits.length?db.deposits.map(x=>`<div class=row><div><div class=name>${esc(x.name)}</div><div class=sub>${x.rate||0}% anual · ${x.currency}</div></div><div class=right>${money(x.base??x.amount)}<br><button class="btn secondary" onclick="editDeposit('${x.id}')">Editar</button> <button class="btn danger" onclick="del('deposits','${x.id}')">×</button></div></div>`).join(''):'<div class=muted>No hay depósitos.</div>';
+ $('accounts').innerHTML=db.accounts.length?db.accounts.map(x=>`<div class=row><div><div class=name>${esc(x.name)}</div><div class=sub>${x.currency}</div></div><div class=right>${money(x.base??x.amount)}<br><button class="btn secondary" onclick="editAccount('${x.id}')">Editar</button> <button class="btn danger" onclick="del('accounts','${x.id}')">×</button></div></div>`).join(''):'<div class=muted>No hay cuentas.</div>';
+ let grand=st+de+ac;$('distribution').innerHTML=[['Acciones',st],['Depósitos',de],['Cuentas',ac]].map(([n,v])=>`<div class=row><span>${n}</span><b>${money(v)} · ${grand?(v/grand*100).toFixed(1):0}%</b></div>`).join('');
+}
+async function api(url){let r=await fetch(url);let j=await r.json();if(j.status==='error'||j.code)throw Error(j.message||'Error API');return j}
+async function fx(from,to){if(from===to)return 1;let j=await api(`https://api.twelvedata.com/exchange_rate?symbol=${from}/${to}&apikey=${encodeURIComponent(db.settings.apiKey)}`);return +j.rate}
+async function refresh(){
+ if(!db.settings.apiKey){alert('Añade la API key en Configuración.');return}
+ try{
+  for(const x of db.stocks){let j=await api(`https://api.twelvedata.com/price?symbol=${encodeURIComponent(x.symbol)}&apikey=${encodeURIComponent(db.settings.apiKey)}`);x.price=+j.price;x.fx=await fx(x.currency,db.settings.baseCurrency);x.base=x.price*x.qty*x.fx}
+  for(const list of [db.deposits,db.accounts])for(const x of list){x.fx=await fx(x.currency,db.settings.baseCurrency);x.base=x.amount*x.fx}
+  db.lastUpdate=new Date().toISOString();save();snapshot(false);alert('Cotizaciones actualizadas correctamente.');
+ }catch(e){alert('No se pudo actualizar: '+e.message)}
+}
+function snapshot(manual){let t=total(),d=new Date().toISOString().slice(0,10),old=db.history.findIndex(x=>x.date.slice(0,10)===d);let rec={date:new Date().toISOString(),total:t};if(old>=0)db.history[old]=rec;else db.history.push(rec);db.history=db.history.slice(-730);localStorage.setItem(STORE,JSON.stringify(db));drawChart();if(manual)alert('Valoración guardada.')}
+function drawChart(){
+ const c=$('chart'),ctx=c.getContext('2d'),w=c.clientWidth*devicePixelRatio,h=240*devicePixelRatio;c.width=w;c.height=h;ctx.clearRect(0,0,w,h);
+ let days=+$('range').value, now=Date.now(), arr=db.history.filter(x=>now-new Date(x.date).getTime()<=days*864e5).sort((a,b)=>new Date(a.date)-new Date(b.date));
+ if(arr.length<2){ctx.font='14px system-ui';ctx.fillStyle='#6b7484';ctx.fillText('Necesitas al menos dos valoraciones para ver la evolución.',20,40);return}
+ let min=Math.min(...arr.map(x=>x.total)),max=Math.max(...arr.map(x=>x.total));if(max===min){max+=1;min-=1}
+ ctx.strokeStyle='#1769e0';ctx.lineWidth=3;ctx.beginPath();arr.forEach((p,i)=>{let x=20+i*(w-40)/(arr.length-1),y=h-25-(p.total-min)*(h-50)/(max-min);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();
+ ctx.fillStyle='#6b7484';ctx.font='12px system-ui';ctx.fillText(money(max),20,18);ctx.fillText(money(min),20,h-7);
+}
+$('stockForm').onsubmit=e=>{e.preventDefault();let idv=$('stockId').value||uid(),x={id:idv,name:$('stockName').value,symbol:$('stockSymbol').value.toUpperCase(),qty:+$('stockQty').value,cost:+$('stockCost').value||0,fees:+$('stockFees').value||0,currency:$('stockCurrency').value};let old=db.stocks.find(z=>z.id===idv);if(old)x={...old,...x};db.stocks=[...db.stocks.filter(z=>z.id!==idv),x];save();hide();e.target.reset()};
+$('depositForm').onsubmit=e=>{e.preventDefault();let idv=$('depositId').value||uid(),x={id:idv,name:$('depositName').value,amount:+$('depositAmount').value,currency:$('depositCurrency').value,rate:+$('depositRate').value||0};db.deposits=[...db.deposits.filter(z=>z.id!==idv),x];save();hide();e.target.reset()};
+$('accountForm').onsubmit=e=>{e.preventDefault();let idv=$('accountId').value||uid(),x={id:idv,name:$('accountName').value,amount:+$('accountAmount').value,currency:$('accountCurrency').value};db.accounts=[...db.accounts.filter(z=>z.id!==idv),x];save();hide();e.target.reset()};
+$('settings').onsubmit=e=>{e.preventDefault();db.settings={apiKey:$('apiKey').value.trim(),baseCurrency:$('baseCurrency').value,auto:$('auto').value};save();alert('Configuración guardada')};
+function editStock(i){let x=db.stocks.find(z=>z.id===i);show('stock');$('stockId').value=x.id;$('stockName').value=x.name;$('stockSymbol').value=x.symbol;$('stockQty').value=x.qty;$('stockCost').value=x.cost||'';$('stockFees').value=x.fees||0;$('stockCurrency').value=x.currency}
+function editDeposit(i){let x=db.deposits.find(z=>z.id===i);show('deposit');$('depositId').value=x.id;$('depositName').value=x.name;$('depositAmount').value=x.amount;$('depositCurrency').value=x.currency;$('depositRate').value=x.rate||''}
+function editAccount(i){let x=db.accounts.find(z=>z.id===i);show('account');$('accountId').value=x.id;$('accountName').value=x.name;$('accountAmount').value=x.amount;$('accountCurrency').value=x.currency}
+function exportData(){let b=new Blob([JSON.stringify(db,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='mi-patrimonio-v2.json';a.click()}
+render();drawChart();if(db.settings.auto==='yes'&&db.settings.apiKey&&db.stocks.length)setTimeout(refresh,900);
+</script></body></html>
