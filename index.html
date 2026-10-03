@@ -26,7 +26,7 @@ canvas{width:100%;height:240px;display:block}.chartWrap{height:250px}
 </style>
 </head>
 <body>
-<header><h1>Mi Patrimonio</h1><small>Versión 3 · inversiones y patrimonio</small></header>
+<header><h1>Mi Patrimonio</h1><small>Versión 3.1 · inversiones y patrimonio</small></header>
 <main>
 <section class="hero">
 <div class="label">PATRIMONIO TOTAL</div><div class="total" id="grand">0,00 €</div>
@@ -75,6 +75,7 @@ canvas{width:100%;height:240px;display:block}.chartWrap{height:250px}
 <div><label>Títulos<input id="stockQty" type="number" step="0.0001" required></label></div>
 <div><label>Coste total de compra<input id="stockCost" type="number" step="0.01" placeholder="Si no lo sabes, 0"></label></div>
 <div><label>Moneda<select id="stockCurrency"><option>EUR</option><option>USD</option><option>GBP</option></select></label></div>
+<div><label>Mercado<select id="stockExchange"><option value="BME">BME (Madrid)</option><option value="NASDAQ">NASDAQ</option><option value="NYSE">NYSE</option><option value="LSE">LSE</option></select></label></div>
 <div><label>Comisión total<input id="stockFees" type="number" step="0.01" value="0"></label></div>
 <div class="full"><button class="btn primary">Guardar acción</button> <button type="button" class="btn secondary" onclick="hide()">Cancelar</button></div>
 </form>
@@ -123,6 +124,7 @@ function loadDB(){
     const old=localStorage.getItem(STORE_V2);
     if(old){
       const d=JSON.parse(old);
+      (d.stocks||[]).forEach(x=>{ if(!x.exchange) x.exchange=((x.symbol||'').toUpperCase()==='SAN'?'BME':((x.symbol||'').toUpperCase()==='FRVO'?'NASDAQ':'NASDAQ')); });
       const migrated={...DEFAULT,...d,settings:{...DEFAULT.settings,...(d.settings||{})}};
       localStorage.setItem(STORE_V3,JSON.stringify(migrated));
       return migrated;
@@ -140,7 +142,7 @@ function hide(){$('forms').classList.add('hidden')}
 function openForm(type){$('forms').classList.remove('hidden');['stock','deposit','account'].forEach(x=>$(x+'Pane').classList.toggle('hidden',x!==type));$('forms').scrollIntoView({behavior:'smooth',block:'start'})}
 
 function resetStockForm(){
-  $('stockForm').reset(); $('stockId').value=''; $('stockFees').value=0; $('stockCurrency').value='EUR'; $('stockTitle').textContent='Nueva acción';
+  $('stockForm').reset(); $('stockId').value=''; $('stockFees').value=0; $('stockCurrency').value='EUR'; $('stockExchange').value='BME'; $('stockTitle').textContent='Nueva acción';
 }
 function resetDepositForm(){ $('depositForm').reset(); $('depositId').value=''; $('depositCurrency').value='EUR'; $('depositTitle').textContent='Nuevo depósito'; }
 function resetAccountForm(){ $('accountForm').reset(); $('accountId').value=''; $('accountCurrency').value='EUR'; $('accountTitle').textContent='Nueva cuenta'; }
@@ -166,7 +168,7 @@ function render(){
     const baseInvested=invested*fxCost;
     const gain=(Number(x.base)||0)-baseInvested;
     const pct=baseInvested?gain/baseInvested*100:null;
-    return `<div class="row"><div><div class="name">${esc(x.name)}</div><div class="sub">${esc(x.symbol)} · ${x.qty} títulos · ${esc(x.currency)}</div><div class="sub">Cotización: ${x.price!=null?money(x.price,x.currency):'—'} · Valor: ${money(x.base||0,db.settings.baseCurrency)}</div></div><div class="right">${pct===null?'<span class="sub">Sin coste de compra</span>':`<span class="${gain>=0?'good':'bad'}">${gain>=0?'+':''}${money(gain,db.settings.baseCurrency)}</span><br><span class="sub">${gain>=0?'+':''}${pct.toFixed(2)}%</span>`}<br><button class="btn secondary" onclick="editStock('${x.id}')">Editar</button> <button class="btn danger" onclick="del('stocks','${x.id}')">×</button></div></div>`
+    return `<div class="row"><div><div class="name">${esc(x.name)}</div><div class="sub">${esc(x.symbol)} · ${x.qty} títulos · ${esc(x.currency)} · ${esc(x.exchange||'')}</div><div class="sub">Cotización: ${x.price!=null?money(x.price,x.currency):'—'} · Valor: ${money(x.base||0,db.settings.baseCurrency)}</div></div><div class="right">${pct===null?'<span class="sub">Sin coste de compra</span>':`<span class="${gain>=0?'good':'bad'}">${gain>=0?'+':''}${money(gain,db.settings.baseCurrency)}</span><br><span class="sub">${gain>=0?'+':''}${pct.toFixed(2)}%</span>`}<br><button class="btn secondary" onclick="editStock('${x.id}')">Editar</button> <button class="btn danger" onclick="del('stocks','${x.id}')">×</button></div></div>`
   }).join(''):'<div class="empty">No hay acciones. Pulsa “+ Añadir acción”.</div>';
 
   $('deposits').innerHTML=db.deposits.length?db.deposits.map(x=>`<div class="row"><div><div class="name">${esc(x.name)}</div><div class="sub">${x.rate||0}% anual · ${x.currency}</div></div><div class="right">${money(x.base??x.amount,db.settings.baseCurrency)}<br><button class="btn secondary" onclick="editDeposit('${x.id}')">Editar</button> <button class="btn danger" onclick="del('deposits','${x.id}')">×</button></div></div>`).join(''):'<div class="empty">No hay depósitos.</div>';
@@ -194,7 +196,9 @@ async function refresh(){
   if(!db.stocks.length&&!db.deposits.length&&!db.accounts.length){alert('Primero añade alguna inversión o cuenta.');return}
   try{
     for(const x of db.stocks){
-      const j=await api(`https://api.twelvedata.com/price?symbol=${encodeURIComponent(x.symbol)}&apikey=${encodeURIComponent(db.settings.apiKey)}`);
+      const exchange=x.exchange||((x.symbol||'').toUpperCase()==='SAN'?'BME':((x.symbol||'').toUpperCase()==='FRVO'?'NASDAQ':'')); 
+      const exchangeParam=exchange?`&exchange=${encodeURIComponent(exchange)}`:'';
+      const j=await api(`https://api.twelvedata.com/price?symbol=${encodeURIComponent(x.symbol)}${exchangeParam}&apikey=${encodeURIComponent(db.settings.apiKey)}`);
       if(j.price===undefined)throw Error(`Sin precio para ${x.symbol}`);
       x.price=+j.price;x.fx=await fx(x.currency,db.settings.baseCurrency);x.base=x.price*x.qty*x.fx;x.fxCost=x.fx;
     }
@@ -222,7 +226,7 @@ $('stockForm').onsubmit=e=>{
   e.preventDefault();
   const idv=$('stockId').value||uid();
   const existing=db.stocks.find(z=>z.id===idv);
-  const x={id:idv,name:$('stockName').value.trim(),symbol:$('stockSymbol').value.trim().toUpperCase(),qty:+$('stockQty').value,cost:+$('stockCost').value||0,fees:+$('stockFees').value||0,currency:$('stockCurrency').value};
+  const x={id:idv,name:$('stockName').value.trim(),symbol:$('stockSymbol').value.trim().toUpperCase(),qty:+$('stockQty').value,cost:+$('stockCost').value||0,fees:+$('stockFees').value||0,currency:$('stockCurrency').value,exchange:$('stockExchange').value};
   if(existing){Object.assign(existing,x)}else{db.stocks.push(x)}
   save();resetStockForm();hide();
 };
@@ -238,7 +242,7 @@ $('accountForm').onsubmit=e=>{
 };
 $('settings').onsubmit=e=>{e.preventDefault();db.settings={apiKey:$('apiKey').value.trim(),baseCurrency:$('baseCurrency').value,auto:$('auto').value};save();alert('Configuración guardada')};
 
-function editStock(i){const x=db.stocks.find(z=>z.id===i);openForm('stock');$('stockTitle').textContent='Editar acción';$('stockId').value=x.id;$('stockName').value=x.name;$('stockSymbol').value=x.symbol;$('stockQty').value=x.qty;$('stockCost').value=x.cost||'';$('stockFees').value=x.fees||0;$('stockCurrency').value=x.currency}
+function editStock(i){const x=db.stocks.find(z=>z.id===i);openForm('stock');$('stockTitle').textContent='Editar acción';$('stockId').value=x.id;$('stockName').value=x.name;$('stockSymbol').value=x.symbol;$('stockQty').value=x.qty;$('stockCost').value=x.cost||'';$('stockFees').value=x.fees||0;$('stockCurrency').value=x.currency;$('stockExchange').value=x.exchange||((x.symbol||'').toUpperCase()==='SAN'?'BME':'NASDAQ')}
 function editDeposit(i){const x=db.deposits.find(z=>z.id===i);openForm('deposit');$('depositTitle').textContent='Editar depósito';$('depositId').value=x.id;$('depositName').value=x.name;$('depositAmount').value=x.amount;$('depositCurrency').value=x.currency;$('depositRate').value=x.rate||''}
 function editAccount(i){const x=db.accounts.find(z=>z.id===i);openForm('account');$('accountTitle').textContent='Editar cuenta';$('accountId').value=x.id;$('accountName').value=x.name;$('accountAmount').value=x.amount;$('accountCurrency').value=x.currency}
 function exportData(){const b=new Blob([JSON.stringify(db,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='mi-patrimonio-v3.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
